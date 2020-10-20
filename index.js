@@ -1,5 +1,11 @@
 const merge = require(`deepmerge`)
 
+function instantiateWithMethods(Component, options, methods) {
+	// const coolPrototype = Object.assign(Object.create(Component.prototype), methods)
+	// return Component.call(coolPrototype, options)
+	return Object.assign(new Component(options), methods)
+}
+
 module.exports = function SvelteStateRendererFactory(defaultOptions = {}) {
 	return function makeRenderer(stateRouter) {
 		const asr = {
@@ -13,10 +19,13 @@ module.exports = function SvelteStateRendererFactory(defaultOptions = {}) {
 			const rendererSuppliedOptions = merge(defaultOptions, {
 				target,
 				props: Object.assign(content, defaultOptions.props, { asr }),
+				data: Object.assign(content, defaultOptions.props, { asr }),
 			})
 
 			function construct(component, options) {
-				return new component(options)
+				return options.methods
+					? instantiateWithMethods(component, options, options.methods)
+					: new component(options)
 			}
 
 			let svelte
@@ -35,9 +44,15 @@ module.exports = function SvelteStateRendererFactory(defaultOptions = {}) {
 			}
 
 			function onRouteChange() {
-				svelte.$set({
-					asr,
-				})
+				if (typeof svelte.$set === 'function') {
+					svelte.$set({
+						asr,
+					})
+				} else {
+					svelte.set({
+						asr,
+					})
+				}
 			}
 
 			stateRouter.on(`stateChangeEnd`, onRouteChange)
@@ -55,7 +70,11 @@ module.exports = function SvelteStateRendererFactory(defaultOptions = {}) {
 				const element = svelte.mountedToTarget
 
 				svelte.asrOnDestroy()
-				svelte.$destroy()
+				if (typeof svelte.$destroy === 'function') {
+					svelte.$destroy()
+				} else {
+					svelte.teardown()
+				}
 
 				const renderContext = Object.assign({ element }, context)
 
@@ -63,7 +82,11 @@ module.exports = function SvelteStateRendererFactory(defaultOptions = {}) {
 			},
 			destroy: function destroy(svelte, cb) {
 				svelte.asrOnDestroy()
-				svelte.$destroy()
+				if (typeof svelte.$destroy === 'function') {
+					svelte.$destroy()
+				} else {
+					svelte.teardown()
+				}
 				cb()
 			},
 			getChildElement: function getChildElement(svelte, cb) {
